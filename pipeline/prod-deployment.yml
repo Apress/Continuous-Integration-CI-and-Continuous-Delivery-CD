@@ -1,0 +1,170 @@
+# This pipeline is responsible for deployment to production.
+# It is manually started.
+# The user has to selected a tag from the start dialog. This tag represents a release version. 
+
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+trigger: none
+
+variables:
+- group: prod
+- group: generic
+- group: semver
+- name: selectedVersion
+  value: NA
+
+stages:
+  #################################################################################################################
+  # STAGE: Validate entry and exit criteria
+  #################################################################################################################
+- stage: Validate_entry_exit_criteria
+  displayName: 'Validate entry and exit criteria'
+  condition: always()
+  jobs:
+  - job: Validate_entry_exit_criteria
+    pool:
+      vmImage: 'ubuntu-latest'
+    workspace:
+      clean: all
+    continueOnError: "false"
+
+    steps:
+      # Validate whether pipeline variables (stored in Variable Groups) are configured
+      # The pipeline stops if a mandatory variable is not configured
+    - script: |
+        echo "Nodejs version is not configured"
+        exit 1
+      displayName: 'Exit if no Node.js version is configured'
+      condition: eq(variables['nodejs-version'], '')
+
+    - script: |
+        echo 'CDK version is not configured'
+        exit 1
+      displayName: 'Exit if no AWS CDK version is configured'
+      condition: eq(variables['cdk-version'], '')
+
+    - script: |
+        echo 'Azure DevOps REST API is not configured'
+        exit 1
+      displayName: 'Exit if no Azure DevOps REST API is configured'
+      condition: eq(variables['rest-api-vg'], '')
+
+      # Download artifacts of the myapp-pipeline
+    - template: template/download-artifacts.yml
+
+      # This is a quality gate to protect against deployment of untested artifacts
+      # It validates whether all QA stages were executed 
+    - script: |
+        if [ ! -f $(Pipeline.Workspace)/myapp-status/VALIDATE-INFRASTRUCTURE-COMPLIANCE-COMPLETED ]; then
+            echo "Stage [Validate infrastructure compliance] was not executed"
+            exit 1
+        fi      
+        if [ ! -f $(Pipeline.Workspace)/myapp-status/PERFORM-TEST-COMPLETED ]; then
+            echo "Stage [Perform test] was not executed"
+            exit 1
+        fi      
+        if [ ! -f $(Pipeline.Workspace)/myapp-status/ANALYZE-CODE-COMPLETED ]; then
+            echo "Stage [Analyze code] was not executed"
+            exit 1
+        fi      
+      displayName: 'Validate whether QA stages are completed'
+
+  #################################################################################################################
+  # STAGE: Provision production environment 
+  # Bootstrap the AWS account, to create the infrastructure that makes CDK deployment possible
+  #################################################################################################################
+- stage: Provision_prod_environment
+  displayName: 'Provision production environment'
+  dependsOn: Validate_entry_exit_criteria
+  condition: succeeded()
+  jobs:
+  - deployment: Provision_test_environment
+    environment: prod
+    pool:
+      vmImage: 'ubuntu-latest'
+    workspace:
+      clean: all
+    continueOnError: "false"
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            # Provision the infrastructure
+          - template: template/provision-infra.yml
+
+  #################################################################################################################
+  # STAGE: Deploy artifact to production
+  #################################################################################################################
+- stage: Deploy_artifact_to_production
+  displayName: 'Deploy artifact to production'
+  dependsOn: Provision_prod_environment
+  jobs:
+  - job: Deploy_artifact_to_production
+    pool:
+      vmImage: 'ubuntu-latest'
+    workspace:
+      clean: all
+    continueOnError: "false"
+    steps:
+      # Download sourcecode of this pipeline
+    - checkout: self
+      persistCredentials: true
+
+      # Retrieve the tag from the selected run. This tag represents the release version
+    - script: |
+        cd $(Build.Repository.LocalPath)
+        tag=$(git describe --tags)
+        echo $tag
+        echo "##vso[task.setvariable variable=selectedVersion]$tag"
+      displayName: Determine version from git tag
+
+      # Display the information used for downloading the artifacts (from the build pipeline with the pipeline-id variable)
+    - script: |
+        echo "Version is $(selectedVersion)"
+        echo "Project is $(project)"
+        echo "Pipeline-id is $(pipeline-id)"
+      displayName: Display version from git tag
+
+      # Download the artifacts from the build pipeline with this specific git tag
+    - task: DownloadPipelineArtifact@2
+      displayName: Download artifacts
+      inputs:
+        source: 'specific'
+        project: $(project)
+        pipeline: $(pipeline-id)
+        runVersion: 'latestFromBranch'
+        runBranch: 'refs/heads/main'
+        allowPartiallySucceededBuilds: 'true'
+        tags: $(selectedVersion)
+    
+      # Tag this pipeline
+    - script: |
+        echo "##vso[build.addbuildtag]$(selectedVersion)"
+      displayName: 'Tag the pipeline with a version'
+
+      # Deploy the application
+    - template: template/deploy.yml
+      parameters:
+        version: $(selectedVersion)
+
+      # Deployment executed; increase minor version with 1
+    - template: template/update-minor.yml
+      parameters:
+        minor: $(minor)
+
+  #################################################################################################################
+  # STAGE: Notify actor 
+  #################################################################################################################
+- stage: Notify_actor
+  displayName: 'Notify actor'
+  condition: always()
+  jobs:
+  - job: Notify_actor
+    pool:
+      vmImage: 'ubuntu-latest'
+    continueOnError: "true"
+
+    steps:
+    - script: |
+        echo 'Notify actor: Use Project settings > Notifications to target specif users/groups with status information by email'
+        echo 'Currently no external system needs to be notified using a custom API call'

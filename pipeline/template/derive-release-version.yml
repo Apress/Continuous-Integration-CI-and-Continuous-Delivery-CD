@@ -1,0 +1,15 @@
+# Based on the major, minor and patch elements, the variable called 'releaseVersion' is set
+
+parameters:
+- name: major
+- name: minor
+- name: patch
+
+steps:
+- script: |
+    # To derive the release version, the major version needs to start with 1 from the year before the app is created (e.g. 2022) 
+    str=${{ parameters.major }}
+    fixMajor="$((str-$(start-year-minus-one)))"
+    echo "##vso[task.setvariable variable=releaseVersion]$fixMajor.${{ parameters.minor }}.${{ parameters.patch }}"
+
+  displayName: 'Derive release version'

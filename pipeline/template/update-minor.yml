@@ -1,0 +1,69 @@
+# The semantic versioning schema consists of a major, minor and patch part
+# The major part is updated every year
+# The patch part is updated with each run of the primary pipeline (pipeline.yml)
+# - If the major or minor updated, the patch starts with 0 again
+#
+# The minor part is updated after every successful deployment to the production environment, or
+# reset to 0 in case the major is updated
+# Updating the minor is done using an Azure DevOps API. If the API is called, the variable group with the name 'semver' is updated
+# Using a variable group for the storage of minor is needed to establish state across stages and pipeline runs
+
+parameters:
+- name: minor
+  default: 0
+- name: tryReset
+  default: "false"
+
+steps:
+- script: |
+    set -x
+
+    # Determine current year
+    year=`date +%Y`
+    echo "$year"
+
+    # Determine whether minor must be reset or incremented with 1
+    val="-1"
+    if [[ ${{ parameters.tryReset }} = true ]]
+    then
+      if [[ $(last-update-year) != $year ]]
+      then
+        # Reset minor
+        echo "Reset minor"
+        val="0"
+      fi
+    else
+      # Increment minor
+      echo "Increment minor"
+      val=$((${{ parameters.minor }} + 1))
+    fi
+    echo "Minor value: $val"
+
+    # Call the API if the value has been changed
+    if [[ $val != -1 ]]
+    then
+      json='{"variables": {"minor": {"value": "'
+      json+=$val
+      json+='"}}, "type": "Vsts", "name": "semver", "description": "Update minor in variable group minor."}'
+      echo "$json"
+
+      # Call the Azure DevOps REST API and update the minor variable
+      curl -X PUT \
+      -u :$(personal-access-token) '$(rest-api-vg)' \
+      -H 'Accept: application/json' \
+      -H 'Content-Type: application/json' \
+      -d '{
+        "variables": {
+          "minor": {
+            "value": "'$val'"
+          },
+          "last-update-year": {
+            "value": "'$year'"
+          }
+        },
+        "type": "Vsts",
+        "name": "semver",
+        "description": "Update My Variable Group."
+      }'
+    fi
+  displayName: 'Update minor'

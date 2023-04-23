@@ -1,0 +1,23 @@
+parameters:
+- name: status
+  type: string
+
+steps:
+- script: |
+    echo > $(Pipeline.Workspace)/${{ parameters.status }}
+    rm -rf $(Build.ArtifactStagingDirectory)/*
+
+  displayName: 'Create stage completed file'
+
+- task: CopyFiles@2
+  inputs:
+    SourceFolder: $(Pipeline.Workspace)
+    contents: '${{ parameters.status }}'
+    targetFolder: $(Build.ArtifactStagingDirectory)
+    flattenFolders: true
+  displayName: 'Copy stage completed file'
+- task: PublishBuildArtifacts@1
+  inputs:
+    pathToPublish: $(Build.ArtifactStagingDirectory)
+    artifactName: myapp-status
+  displayName: 'Publish stage completed file'

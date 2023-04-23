@@ -1,0 +1,17 @@
+# Create the infrastructure needed to deploy the application
+# Using the bootstrap command, all resources needed for deployment are createdm e.g. an S3 bucket to store the application artifacts
+
+steps:
+- template: install-tools.yml
+- task: AWSShellScript@1
+  inputs:
+    awsCredentials: $(service-connection-aws-account)
+    regionName: $(aws-region)
+    scriptType: 'inline'
+    inlineScript: |
+      #!/bin/bash
+      set -ex
+      # Perform the bootstrap. This is done only once, but this task is idempotent
+      $(Agent.WorkFolder)/node_modules/.bin/cdk bootstrap aws://$(aws-account)/$(aws-region)
+
+  displayName: 'Provision AWS infrastructure'

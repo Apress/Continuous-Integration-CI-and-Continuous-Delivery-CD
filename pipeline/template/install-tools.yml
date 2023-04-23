@@ -1,0 +1,19 @@
+ # Install the tools on the Azure DevOps agent to make a deployment possible
+
+steps:
+- task: JavaToolInstaller@0
+  inputs:
+      versionSpec: '11'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
+  # Install node.js
+- task: NodeTool@0
+  inputs:
+      versionSpec: $(nodejs-version)
+  displayName: 'Install node.js'
+
+  # Install AWS CDK
+- script: |
+    sudo npm install aws-cdk@$(cdk-version)
+  displayName: 'Install AWS CDK'

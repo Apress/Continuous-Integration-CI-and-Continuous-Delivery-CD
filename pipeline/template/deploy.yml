@@ -1,0 +1,37 @@
+# This template deploys the application  to AWS using the CDK infrastructure artifact
+
+parameters:
+- name: version
+  type: string
+
+steps:
+- template: install-tools.yml
+- task: AWSShellScript@1
+  inputs:
+    awsCredentials: $(service-connection-aws-account)
+    regionName: $(aws-region)
+    scriptType: 'inline'
+    inlineScript: |
+      #!/bin/bash
+      set -ex
+      export infrastructure=`find $(Pipeline.Workspace) -name infrastructure*shaded.jar`
+      echo "Infrastructure artifact name and path: $infrastructure"
+      export application=`find $(Pipeline.Workspace) -name application*shaded.jar`
+      echo "Application artifact name and path: $application"
+      echo "Version to deploy: ${{ parameters.version }}"
+
+      # Calculate a SH256 checksum of the application jar file
+      echo "SHA256 checksum of $application"
+      sha256sum $application
+
+      # Deploy the lambda
+      $(Agent.WorkFolder)/node_modules/.bin/cdk deploy --app '${JAVA_HOME_11_X64}/bin/java -cp $infrastructure com.mycorp.myapp.cdk.CdkMyApp' \
+          -c account=$(aws-account) \
+          -c region=$(aws-region) \
+          -c my-handler-path=$application \
+          -c version=${{ parameters.version }} \
+          --all \
+          --ci \
+          --require-approval never
+
+  displayName: 'Deploy to AWS'

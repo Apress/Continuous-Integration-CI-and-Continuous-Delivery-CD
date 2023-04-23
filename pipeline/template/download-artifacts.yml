@@ -1,0 +1,33 @@
+steps:
+  # Download sourcecode of this pipeline the selected tag
+- checkout: self
+  persistCredentials: true
+
+  # Retrieve the tag from the selected run. This tag represents the release version
+- script: |
+      cd $(Build.Repository.LocalPath)
+      tag=`git describe --exact-match --tags $(git log -n1 --pretty='%h')`
+      #tag=$(git describe --tags)
+      echo $tag
+      echo "##vso[task.setvariable variable=selectedVersion]$tag"
+  displayName: Determine version from git tag
+
+      # Display the information used for downloading the artifacts (from the build pipeline with the pipeline-id variable)
+- script: |
+      echo "Version is $(selectedVersion)"
+      echo "Project is $(project)"
+      echo "Pipeline-id is $(pipeline-id)"
+  displayName: Display version from git tag
+
+      # Download the artifacts from the build pipeline with this specific git tag
+      # This is needed to validate whether the build pipeline executed all the QA stages
+- task: DownloadPipelineArtifact@2
+  inputs:
+    source: 'specific'
+    project: $(project)
+    pipeline: $(pipeline-id)
+    runVersion: 'latestFromBranch'
+    runBranch: 'refs/heads/main'
+    allowPartiallySucceededBuilds: 'true'
+    tags: $(selectedVersion)
+  displayName: Download artifacts
