@@ -7,6 +7,8 @@ This repository accompanies [*Continuous Integration (CI) and Continuous Deliver
 
 Download the files as a zip using the green button, or clone the repository to your machine using Git.
 
+The unit test framework used in chapter 6 can be found on my personal Github page: [junit-pipeline](https://github.com/hvmerode/junit-pipeline)
+
 ## Releases
 
 Release v1.0 corresponds to the code in the published book, without corrections or updates.
